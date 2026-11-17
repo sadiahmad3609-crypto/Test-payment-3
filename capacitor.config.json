@@ -1,0 +1,12 @@
+{
+  "appId": "xyz.emonpay.testapp",
+  "appName": "Emon Pay Test",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "allowNavigation": ["*"]
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true }
+  }
+}
