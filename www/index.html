@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Emon Pay Test</title>
+<style>
+body{font-family:system-ui,sans-serif;margin:0;padding:20px 16px;background:#f4f5f7;color:#1d1f23}
+.card{background:#fff;border-radius:16px;padding:20px;margin-bottom:14px}
+h1{margin:4px 0 14px;font-size:36px}
+input,button{width:100%;padding:13px;font-size:16px;border-radius:10px;border:1px solid #ddd;margin:4px 0;box-sizing:border-box}
+button{background:#303030;color:#fff;border:0;font-weight:600}
+button.sec{background:#fff;color:#303030;border:1px solid #303030}
+button:disabled{opacity:.6}
+#msg{display:none;padding:12px;border-radius:10px;background:#e8e8e8;margin-bottom:14px;font-size:14px;word-break:break-word}
+#f{display:none}
+.tx{display:flex;justify-content:space-between;padding:8px 0;border-top:1px solid #eee;font-size:14px}
+</style>
+</head>
+<body>
+<h3 style="text-align:center">EMON PAY · Test</h3>
+<div id="msg"></div>
+
+<div class="card">
+  <div>বর্তমান ব্যালেন্স</div>
+  <h1>৳ <span id="bal">0.00</span></h1>
+  <button id="addBtn">+ Add Balance</button>
+  <form id="f">
+    <input id="amount" type="number" step="any" min="1" placeholder="অ্যামাউন্ট" required>
+    <input id="name" placeholder="নাম" required>
+    <input id="email" type="email" placeholder="ইমেইল" required>
+    <button id="pay" type="submit">পেমেন্ট করুন</button>
+  </form>
+</div>
+
+<div class="card">
+  <strong>পেমেন্ট করেও ব্যালেন্স না বাড়লে</strong>
+  <input id="trx" placeholder="Transaction ID">
+  <button class="sec" id="chk">চেক করুন</button>
+</div>
+
+<div class="card"><strong>ট্রানজেকশন</strong><div id="list"></div></div>
+
+<script>
+// ===== এখানে আসল কী বসান =====
+const API_KEY    = 'akcf8d2eBqKLKP8Cz27WJ0uoPRvNp7BZHY9lqHuJwzw84wiEZn';
+const SECRET_KEY = 'akcf8d2eBqKLKP8Cz27WJ0uoPRvNp7BZHY9lqHuJwzw84wiEZn';
+const BRAND_KEY  = 'akcf8d2eBqKLKP8Cz27WJ0uoPRvNp7BZHY9lqHuJwzw84wiEZn';
+const BASE = 'https://pay.emonpay.xyz/api/payment/';
+
+const $ = id => document.getElementById(id);
+const show = t => { $('msg').style.display='block'; $('msg').textContent=t };
+let db; try { db = JSON.parse(localStorage.getItem('ep')); } catch {}
+if (!db || !db.done) db = {bal:0, done:[], list:[]};
+const save = () => { try { localStorage.setItem('ep', JSON.stringify(db)); } catch {} };
+function render(){
+  $('bal').textContent = db.bal.toFixed(2);
+  $('list').innerHTML = db.list.slice().reverse().map(t =>
+    `<div class="tx"><span>${t.id}</span><b style="color:#16a34a">+৳${t.amount}</b></div>`).join('') || '<small>এখনো নেই</small>';
+}
+
+async function call(path, body){
+  const headers = {'Content-Type':'application/json','API-KEY':API_KEY};
+  if (SECRET_KEY) headers['SECRET-KEY'] = SECRET_KEY;
+  if (BRAND_KEY)  headers['BRAND-KEY']  = BRAND_KEY;
+  const r = await fetch(BASE + path, {method:'POST', headers, body: JSON.stringify(body)});
+  const txt = typeof r.text === 'function' ? await r.text() : '';
+  try { return JSON.parse(txt); } catch { return {status:false, message:'সার্ভারের উত্তর: ' + txt.slice(0,200)}; }
+}
+
+async function verify(t){
+  try{
+    const v = await call('verify', {transaction_id: t});
+    if ((v.status||'').toUpperCase() === 'COMPLETED'){
+      if (db.done.includes(t)) show('এই ট্রানজেকশন আগেই যোগ হয়েছে');
+      else { const a = parseFloat(v.amount); db.bal += a; db.done.push(t); db.list.push({id:t, amount:a}); save(); show('৳'+a+' যোগ হয়েছে ✅'); }
+    } else show('পেমেন্ট সম্পন্ন হয়নি: ' + (v.status || v.message || ''));
+  }catch(e){ show('Verify ব্যর্থ: ' + e.message); }
+  render();
+}
+
+$('addBtn').onclick = () => { $('f').style.display='block'; $('addBtn').style.display='none'; };
+
+$('f').onsubmit = async e => {
+  e.preventDefault();
+  $('pay').disabled = true; $('pay').textContent = 'প্রসেস হচ্ছে...';
+  try{
+    const home = location.origin + '/index.html';
+    const r = await call('create', {
+      cus_name: $('name').value, cus_email: $('email').value,
+      amount: String(parseFloat($('amount').value)),
+      success_url: home + '?r=ok', cancel_url: home + '?r=cancel'
+    });
+    if (r.payment_url){ location.href = r.payment_url; return; }
+    show('ব্যর্থ: ' + (r.message || JSON.stringify(r)));
+  }catch(err){ show('সমস্যা: ' + err.message); }
+  $('pay').disabled = false; $('pay').textContent = 'পেমেন্ট করুন';
+};
+
+$('chk').onclick = () => { const t = $('trx').value.trim(); if (t) verify(t); };
+
+(async () => {
+  render();
+  const p = new URLSearchParams(location.search);
+  if (p.get('r') === 'cancel') show('পেমেন্ট বাতিল করা হয়েছে');
+  const t = p.get('transactionId') || p.get('transaction_id');
+  if (t) { show('পেমেন্ট যাচাই হচ্ছে...'); await verify(t); }
+  if (p.toString()) history.replaceState(null, '', location.pathname);
+})();
+</script>
+</body>
+  </html>
